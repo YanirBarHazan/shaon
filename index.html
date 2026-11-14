@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0f172a">
+<title>שעון נוכחות</title>
+<style>
+  :root { --bg:#0f172a; --card:#ffffff; --text:#0f172a; --muted:#64748b; --in:#16a34a; --out:#2563eb; --warn:#d97706; --err:#dc2626; --idle:#64748b; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, "Noto Sans Hebrew", Arial, sans-serif; background:var(--bg); color:var(--text);
+         display:flex; align-items:center; justify-content:center; padding:20px; }
+  .card { width:100%; max-width:420px; background:var(--card); border-radius:24px; padding:32px 24px 28px; text-align:center;
+          box-shadow:0 20px 50px rgba(0,0,0,.35); }
+  .badge { width:96px; height:96px; border-radius:50%; margin:0 auto 18px; display:flex; align-items:center; justify-content:center;
+           font-size:46px; color:#fff; background:var(--idle); transition:background .3s, transform .3s; }
+  .badge.pop { transform:scale(1.06); }
+  h1 { font-size:26px; margin:0 0 6px; }
+  .time { font-size:56px; font-weight:800; letter-spacing:1px; margin:6px 0 4px; font-variant-numeric:tabular-nums; }
+  .sub { color:var(--muted); font-size:17px; line-height:1.5; margin:4px 0; }
+  .note { margin-top:18px; padding:12px 14px; border-radius:14px; background:#fff7ed; color:#9a3412; font-size:15px; line-height:1.5; display:none; }
+  .spinner { width:44px; height:44px; border:5px solid rgba(255,255,255,.35); border-top-color:#fff; border-radius:50%; animation:spin 1s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .foot { margin-top:22px; color:#94a3b8; font-size:13px; }
+</style>
+</head>
+<body>
+<main class="card" aria-live="polite">
+  <div id="badge" class="badge"><div class="spinner"></div></div>
+  <h1 id="title">רגע...</h1>
+  <div id="time" class="time" style="display:none"></div>
+  <p id="sub" class="sub"></p>
+  <p id="sub2" class="sub"></p>
+  <div id="note" class="note"></div>
+  <div id="foot" class="foot"></div>
+</main>
+
+<script>
+/* ===== הגדרה: כתובת ה-Web App של Apps Script ===== */
+var SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw4HP1zP6L62dexco0KL7u4GDCNsRz7O9Vz1DnBKI61FHbKCTr5XJX3B80sx_GrOPTb/exec';
+/* ================================================== */
+
+var STORE_SECRET = 'nfc_att_secret';
+var STORE_NAME = 'nfc_att_name';
+
+function $(id) { return document.getElementById(id); }
+function getItem(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function setItem(k, v) { try { localStorage.setItem(k, v); return getItem(k) === v; } catch (e) { return false; } }
+
+function newSecret() {
+  var b = new Uint8Array(32);
+  crypto.getRandomValues(b);
+  return Array.prototype.map.call(b, function (x) { return ('0' + x.toString(16)).slice(-2); }).join('');
+}
+
+function show(o) {
+  var badge = $('badge');
+  badge.style.background = o.color || 'var(--idle)';
+  badge.innerHTML = o.icon || '';
+  badge.classList.remove('pop'); void badge.offsetWidth; badge.classList.add('pop');
+  $('title').textContent = o.title || '';
+  $('time').style.display = o.time ? 'block' : 'none';
+  $('time').textContent = o.time || '';
+  $('sub').textContent = o.sub || '';
+  $('sub2').textContent = o.sub2 || '';
+  $('note').style.display = o.note ? 'block' : 'none';
+  $('note').textContent = o.note || '';
+  $('foot').textContent = o.foot || '';
+  if (o.vibrate && navigator.vibrate) navigator.vibrate(o.vibrate);
+}
+
+function loading(text) {
+  show({ icon: '<div class="spinner"></div>', title: text, color: 'var(--idle)' });
+}
+
+function api(payload) {
+  var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 25000) : null;
+  payload.device = navigator.userAgent;
+  return fetch(SCRIPT_URL, {
+    method: 'POST',
+    body: JSON.stringify(payload),          // text/plain: no CORS preflight
+    signal: ctrl ? ctrl.signal : undefined,
+    redirect: 'follow'
+  }).then(function (r) { return r.json(); })
+    .finally(function () { if (timer) clearTimeout(timer); });
+}
+
+function cleanUrl() {
+  try { history.replaceState(null, '', location.pathname); } catch (e) {}
+}
+
+function hoursText(h) {
+  if (typeof h !== 'number') return '';
+  var mins = Math.round(h * 60);
+  return Math.floor(mins / 60) + ':' + ('0' + (mins % 60)).slice(-2) + ' שעות';
+}
+
+function netError() {
+  show({ icon: '!', color: 'var(--err)', title: 'אין חיבור', sub: 'בדוק שיש אינטרנט וגע שוב בשבב', vibrate: [80, 60, 80] });
+}
+
+/* ---------- רישום טלפון ---------- */
+function enroll(token) {
+  loading('רושם את הטלפון...');
+  var old = getItem(STORE_SECRET);
+  var secret = newSecret();
+  api({ action: 'enroll', token: token, secret: secret, oldSecret: old || '' }).then(function (res) {
+    cleanUrl();
+    if (!res.ok) {
+      show({ icon: '✕', color: 'var(--err)', title: 'הרישום לא הצליח', sub: res.message, vibrate: [80, 60, 80] });
+      return;
+    }
+    if (!setItem(STORE_SECRET, secret)) {
+      show({ icon: '!', color: 'var(--err)', title: 'הדפדפן חוסם שמירה', sub: 'כנראה שזה מצב גלישה פרטית. פתח את הקישור בחלון רגיל, ובאייפון בספארי' });
+      return;
+    }
+    setItem(STORE_NAME, res.name);
+    show({
+      icon: '✓', color: 'var(--in)', title: 'הטלפון נרשם', sub: 'שלום ' + res.name + '!',
+      sub2: 'מעכשיו מחתימים כניסה ויציאה בנגיעה של הטלפון בשבב בחנות.',
+      note: 'חשוב: אל תמחק נתוני גלישה של הדפדפן הזה, אחרת תצטרך רישום מחדש.',
+      vibrate: 120
+    });
+  }).catch(function () { netError(); });
+}
+
+/* ---------- החתמה ---------- */
+function punch() {
+  var secret = getItem(STORE_SECRET);
+  var url = location.href;
+  cleanUrl();
+  if (!secret) {
+    show({ icon: '?', color: 'var(--warn)', title: 'הטלפון לא רשום', sub: 'כדי להחתים צריך קודם לרשום את הטלפון.', sub2: 'בקש מהמנהל קישור רישום ופתח אותו בטלפון הזה.' });
+    return;
+  }
+  loading('מחתים...');
+  api({ action: 'punch', url: url, secret: secret }).then(function (res) {
+    if (!res.ok) {
+      if (res.code === 'not_enrolled') { try { localStorage.removeItem(STORE_SECRET); } catch (e) {} }
+      show({ icon: '✕', color: 'var(--err)', title: 'לא נרשם', sub: res.message, vibrate: [80, 60, 80] });
+      return;
+    }
+    if (res.action === 'in') {
+      show({ icon: '→', color: 'var(--in)', title: 'כניסה נרשמה', time: res.time, sub: res.name, sub2: res.store, note: res.warning || '', vibrate: 120 });
+    } else if (res.action === 'out') {
+      show({ icon: '←', color: 'var(--out)', title: 'יציאה נרשמה', time: res.time, sub: res.name + ' · ' + res.store,
+             sub2: 'משך המשמרת: ' + hoursText(res.hours), vibrate: [60, 40, 60] });
+    } else {
+      show({ icon: '✓', color: 'var(--idle)', title: 'כבר נרשמת', sub: res.message, time: res.time });
+    }
+  }).catch(function () { netError(); });
+}
+
+/* ---------- מצב (כניסה לדף בלי שבב) ---------- */
+function status() {
+  var secret = getItem(STORE_SECRET);
+  if (!secret) {
+    show({ icon: '?', color: 'var(--warn)', title: 'הטלפון לא רשום', sub: 'בקש מהמנהל קישור רישום ופתח אותו בטלפון הזה.' });
+    return;
+  }
+  loading('בודק...');
+  api({ action: 'status', secret: secret }).then(function (res) {
+    if (!res.ok || !res.enrolled) {
+      show({ icon: '?', color: 'var(--warn)', title: 'הטלפון לא רשום', sub: 'בקש מהמנהל קישור רישום חדש.' });
+      return;
+    }
+    show({
+      icon: res.clockedIn ? '●' : '○', color: res.clockedIn ? 'var(--in)' : 'var(--idle)',
+      title: res.name, sub: res.clockedIn ? 'במשמרת מ-' + res.since : 'לא במשמרת כרגע',
+      sub2: 'כדי להחתים, גע עם הטלפון בשבב בחנות.'
+    });
+  }).catch(function () { netError(); });
+}
+
+(function main() {
+  if (SCRIPT_URL.indexOf('PASTE_') === 0) {
+    show({ icon: '!', color: 'var(--err)', title: 'הדף לא מוגדר', sub: 'צריך להדביק את כתובת ה-Apps Script בראש הקובץ.' });
+    return;
+  }
+  var params = new URLSearchParams(location.search);
+  var token = params.get('enroll');
+  var hasTag = /[0-9A-Fa-f]{14}x[0-9A-Fa-f]{6}x[0-9A-Fa-f]{16}|[?&](uid|u)=[0-9A-Fa-f]{14}/.test(location.search);
+  if (token) enroll(token);
+  else if (hasTag) punch();
+  else status();
+})();
+</script>
+</body>
+</html>
