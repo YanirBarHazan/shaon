@@ -24,6 +24,11 @@
   .spinner { width:44px; height:44px; border:5px solid rgba(255,255,255,.35); border-top-color:#fff; border-radius:50%; animation:spin 1s linear infinite; }
   @keyframes spin { to { transform:rotate(360deg); } }
   .foot { margin-top:22px; color:#94a3b8; font-size:13px; }
+  #codeForm { margin-top:18px; display:none; }
+  #codeInput { width:100%; font-size:34px; letter-spacing:10px; text-align:center; padding:12px 8px; border:2px solid #cbd5e1; border-radius:14px; direction:ltr; font-variant-numeric:tabular-nums; outline:none; }
+  #codeInput:focus { border-color:#0f172a; }
+  #codeBtn { margin-top:12px; width:100%; padding:15px; border:0; border-radius:14px; background:#0f172a; color:#fff; font-size:18px; font-weight:700; }
+  #codeBtn:disabled { opacity:.5; }
 </style>
 </head>
 <body>
@@ -34,6 +39,10 @@
   <p id="sub" class="sub"></p>
   <p id="sub2" class="sub"></p>
   <div id="note" class="note"></div>
+  <div id="codeForm">
+    <input id="codeInput" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="------">
+    <button id="codeBtn">רישום</button>
+  </div>
   <div id="foot" class="foot"></div>
 </main>
 
@@ -68,6 +77,7 @@ function show(o) {
   $('note').style.display = o.note ? 'block' : 'none';
   $('note').textContent = o.note || '';
   $('foot').textContent = o.foot || '';
+  $('codeForm').style.display = o.form ? 'block' : 'none';
   if (o.vibrate && navigator.vibrate) navigator.vibrate(o.vibrate);
 }
 
@@ -127,27 +137,61 @@ function enroll(token) {
   }).catch(function () { netError(); });
 }
 
+/* ---------- רישום עם קוד (בדפדפן שהשבב פותח) ---------- */
+var pendingUrl = null;
+function showCodeForm(url) {
+  pendingUrl = url || null;
+  show({ icon: '#', color: 'var(--warn)', title: 'הטלפון עוד לא רשום', sub: 'הקלד את קוד הרישום (6 ספרות) שקיבלת מהמנהל', form: true,
+         sub2: url ? 'אחרי הרישום הנגיעה הזו תיחשב מיד' : '' });
+  $('codeInput').value = ''; $('codeBtn').disabled = false;
+  setTimeout(function () { $('codeInput').focus(); }, 100);
+}
+function submitCode() {
+  var code = $('codeInput').value.replace(/\D/g, '');
+  if (code.length !== 6) { $('codeInput').focus(); return; }
+  $('codeBtn').disabled = true;
+  var old = getItem(STORE_SECRET);
+  var secret = newSecret();
+  loading('רושם את הטלפון...');
+  api({ action: 'enroll', code: code, secret: secret, oldSecret: old || '' }).then(function (res) {
+    if (!res.ok) {
+      showCodeForm(pendingUrl);
+      $('sub2').textContent = res.message;
+      if (navigator.vibrate) navigator.vibrate([80, 60, 80]);
+      return;
+    }
+    if (!setItem(STORE_SECRET, secret)) {
+      show({ icon: '!', color: 'var(--err)', title: 'הדפדפן חוסם שמירה', sub: 'כנראה שזה מצב גלישה פרטית. צא ממנו ונסה שוב.' });
+      return;
+    }
+    setItem(STORE_NAME, res.name);
+    if (pendingUrl) { doPunch(pendingUrl, secret, 'שלום ' + res.name + ', הטלפון נרשם. '); return; }
+    show({ icon: '✓', color: 'var(--in)', title: 'הטלפון נרשם', sub: 'שלום ' + res.name + '!', sub2: 'מעכשיו מחתימים כניסה ויציאה בנגיעה בשבב בחנות.', vibrate: 120 });
+  }).catch(function () { showCodeForm(pendingUrl); $('sub2').textContent = 'אין חיבור. נסה שוב'; });
+}
+
 /* ---------- החתמה ---------- */
 function punch() {
   var secret = getItem(STORE_SECRET);
   var url = location.href;
   cleanUrl();
-  if (!secret) {
-    show({ icon: '?', color: 'var(--warn)', title: 'הטלפון לא רשום', sub: 'כדי להחתים צריך קודם לרשום את הטלפון.', sub2: 'בקש מהמנהל קישור רישום ופתח אותו בטלפון הזה.' });
-    return;
-  }
+  if (!secret) { showCodeForm(url); return; }
+  doPunch(url, secret, '');
+}
+
+function doPunch(url, secret, prefix) {
   loading('מחתים...');
   api({ action: 'punch', url: url, secret: secret }).then(function (res) {
     if (!res.ok) {
-      if (res.code === 'not_enrolled') { try { localStorage.removeItem(STORE_SECRET); } catch (e) {} }
+      if (res.code === 'not_enrolled') { try { localStorage.removeItem(STORE_SECRET); } catch (e) {} showCodeForm(url); return; }
       show({ icon: '✕', color: 'var(--err)', title: 'לא נרשם', sub: res.message, vibrate: [80, 60, 80] });
       return;
     }
     if (res.action === 'in') {
-      show({ icon: '→', color: 'var(--in)', title: 'כניסה נרשמה', time: res.time, sub: res.name, sub2: res.store, note: res.warning || '', vibrate: 120 });
+      show({ icon: '→', color: 'var(--in)', title: 'כניסה נרשמה', time: res.time, sub: res.name, sub2: res.store, note: (prefix || '') + (res.warning || ''), vibrate: 120 });
     } else if (res.action === 'out') {
       show({ icon: '←', color: 'var(--out)', title: 'יציאה נרשמה', time: res.time, sub: res.name + ' · ' + res.store,
-             sub2: 'משך המשמרת: ' + hoursText(res.hours), vibrate: [60, 40, 60] });
+             sub2: 'משך המשמרת: ' + hoursText(res.hours), note: prefix || '', vibrate: [60, 40, 60] });
     } else {
       show({ icon: '✓', color: 'var(--idle)', title: 'כבר נרשמת', sub: res.message, time: res.time });
     }
@@ -157,16 +201,10 @@ function punch() {
 /* ---------- מצב (כניסה לדף בלי שבב) ---------- */
 function status() {
   var secret = getItem(STORE_SECRET);
-  if (!secret) {
-    show({ icon: '?', color: 'var(--warn)', title: 'הטלפון לא רשום', sub: 'בקש מהמנהל קישור רישום ופתח אותו בטלפון הזה.' });
-    return;
-  }
+  if (!secret) { showCodeForm(null); return; }
   loading('בודק...');
   api({ action: 'status', secret: secret }).then(function (res) {
-    if (!res.ok || !res.enrolled) {
-      show({ icon: '?', color: 'var(--warn)', title: 'הטלפון לא רשום', sub: 'בקש מהמנהל קישור רישום חדש.' });
-      return;
-    }
+    if (!res.ok || !res.enrolled) { try { localStorage.removeItem(STORE_SECRET); } catch (e) {} showCodeForm(null); return; }
     show({
       icon: res.clockedIn ? '●' : '○', color: res.clockedIn ? 'var(--in)' : 'var(--idle)',
       title: res.name, sub: res.clockedIn ? 'במשמרת מ-' + res.since : 'לא במשמרת כרגע',
@@ -174,6 +212,10 @@ function status() {
     });
   }).catch(function () { netError(); });
 }
+
+$('codeBtn').onclick = submitCode;
+$('codeInput').onkeydown = function (e) { if (e.key === 'Enter') submitCode(); };
+$('codeInput').oninput = function () { this.value = this.value.replace(/\D/g, '').slice(0, 6); if (this.value.length === 6) submitCode(); };
 
 (function main() {
   if (SCRIPT_URL.indexOf('PASTE_') === 0) {
