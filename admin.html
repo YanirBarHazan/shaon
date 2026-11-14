@@ -192,6 +192,7 @@
   .btn.red { background:var(--red); color:#fff; border-color:var(--red); }
   .btn.wa { background:#1f7a4f; color:#fff; border-color:#1f7a4f; display:flex; align-items:center; justify-content:center; gap:8px; }
   .btn:disabled { opacity:.55; }
+  .bigcode { font-family:var(--mono); font-size:44px; font-weight:600; letter-spacing:.18em; text-align:center; direction:ltr; margin:14px 0 4px; padding:14px 0; border:2px dashed var(--ink); border-radius:12px; background:#fff; }
   .linkbox { margin-top:12px; border:1px dashed var(--rule2); border-radius:10px; padding:10px 12px; background:var(--paper); font-size:13.5px; white-space:pre-wrap; max-height:140px; overflow:auto; }
 
   #toast { position:fixed; z-index:50; left:50%; bottom:calc(98px + env(safe-area-inset-bottom)); transform:translate(-50%,20px); background:var(--ink); color:var(--sheet); padding:11px 18px; border-radius:30px; font-size:14px; font-weight:600; opacity:0; transition:.3s var(--ease); pointer-events:none; white-space:nowrap; }
@@ -470,8 +471,8 @@ function renderEmps() {
       var tag = !e.active ? '<span class="tag off">לא פעיל</span>' : e.hasDevice ? '<span class="tag ok">רשום</span>' : e.status === 'ממתין לרישום' ? '<span class="tag wait">ממתין לרישום</span>' : '<span class="tag no">לא רשום</span>';
       html += '<div class="emp"><div class="avatar' + (e.active ? '' : ' off') + '" style="--c:' + storeColor(st) + ';--s:' + (openIds[e.id] ? 'var(--green)' : '#cfc3aa') + '">' + esc(initial(e.name)) + '<span class="st"></span></div>' +
         '<div class="body"><div class="nm">' + esc(e.name) + tag + '</div>' +
-        '<div class="dev">' + (e.device ? esc(e.device) + (e.enrolled ? ' · נרשם ' + e.enrolled : '') : 'עוד לא רשם טלפון') + '</div>' +
-        '<div class="acts">' + (e.active ? '<button class="act wa" data-link="' + esc(e.id) + '">' + (e.hasDevice ? 'קישור חדש' : 'שליחת קישור') + '</button>' : '') +
+        '<div class="dev">' + (e.device ? esc(e.device) + (e.enrolled ? ' · נרשם ' + e.enrolled : '') : (e.code ? 'קוד רישום: <b class="mono" style="color:var(--ink);font-size:14px">' + esc(e.code) + '</b>' : 'עוד לא רשם טלפון')) + '</div>' +
+        '<div class="acts">' + (e.active ? '<button class="act wa" data-link="' + esc(e.id) + '">' + (e.hasDevice ? 'קוד חדש' : (e.code ? 'שליחת הקוד' : 'קוד רישום')) + '</button>' : '') +
         (e.hasDevice ? '<button class="act" data-reset="' + esc(e.id) + '">ניתוק טלפון</button>' : '') +
         '<button class="act" data-edit="' + esc(e.id) + '">עריכה</button></div></div></div>';
     });
@@ -496,7 +497,7 @@ function emp(id) { return state.data.employees.filter(function (x) { return x.id
 var CANCEL = '<button class="btn" data-close>ביטול</button>';
 
 function dlgAddEmp() {
-  openDlg('<h3>עובד חדש</h3><div class="sub">אחרי השמירה ייפתח קישור רישום לשליחה בוואטסאפ</div>' +
+  openDlg('<h3>עובד חדש</h3><div class="sub">אחרי השמירה יופיע קוד רישום לשליחה בוואטסאפ</div>' +
     '<div class="f"><label>שם העובד</label><input id="fName" maxlength="40" autocomplete="off"></div>' +
     '<div class="f"><label>חנות</label>' + storePicker() + '</div>' +
     '<div class="btns">' + CANCEL + '<button class="btn dark" id="fSave">הוספה</button></div>');
@@ -529,10 +530,11 @@ function dlgEdit(id) {
 
 function dlgLink(id) {
   var e = emp(id);
-  openDlg('<h3>קישור רישום</h3><div class="sub">מכין קישור ל' + esc(e ? e.name : '') + '...</div><div class="loading" style="padding:20px 0"></div>');
+  openDlg('<h3>קוד רישום</h3><div class="sub">מכין קוד ל' + esc(e ? e.name : '') + '...</div><div class="loading" style="padding:20px 0"></div>');
   api({ action: 'admin_enroll_link', id: id }).then(function (res) {
     if (!res.ok) { $('dlgBody').innerHTML = '<h3>שגיאה</h3><div class="sub">' + esc(res.message) + '</div><div class="btns">' + CANCEL + '</div>'; return; }
-    $('dlgBody').innerHTML = '<h3>קישור ל' + esc(e ? e.name : '') + '</h3><div class="sub">עובד פעם אחת ותקף ל-24 שעות. הכי בטוח לשלוח כשהעובד לידך.</div>' +
+    $('dlgBody').innerHTML = '<h3>קוד רישום ל' + esc(e ? e.name : '') + '</h3><div class="sub">בנגיעה הראשונה בשבב העובד יתבקש להקליד את הקוד. עובד פעם אחת, תקף ל-24 שעות.</div>' +
+      '<div class="bigcode">' + esc(res.code) + '</div>' +
       '<div class="linkbox" id="fMsg">' + esc(res.message) + '</div>' +
       '<div class="btns"><button class="btn" id="fCopy">העתקה</button><a class="btn wa" target="_blank" rel="noopener" href="https://wa.me/?text=' + encodeURIComponent(res.message) + '">שליחה בוואטסאפ</a></div>' +
       '<button class="btn" data-close style="width:100%;margin-top:8px;border:0;background:none;color:var(--mute)">סגירה</button>';
