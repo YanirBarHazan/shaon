@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0f172a">
+<title>ניהול שעון נוכחות</title>
+<style>
+  :root { --bg:#f1f5f9; --card:#fff; --text:#0f172a; --muted:#64748b; --line:#e2e8f0; --brand:#0f172a; --in:#16a34a; --out:#2563eb; --warn:#d97706; --err:#dc2626; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; font-family:-apple-system,"Segoe UI",Roboto,"Noto Sans Hebrew",Arial,sans-serif; background:var(--bg); color:var(--text); font-size:16px; }
+  button, input, select { font:inherit; }
+  .hidden { display:none !important; }
+  header { position:sticky; top:0; z-index:5; background:var(--brand); color:#fff; padding:14px 16px 10px; }
+  .hrow { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  header h1 { font-size:18px; margin:0; font-weight:700; }
+  .month { display:flex; align-items:center; gap:6px; margin-top:10px; justify-content:center; }
+  .month button { background:rgba(255,255,255,.12); color:#fff; border:0; border-radius:10px; width:36px; height:32px; font-size:18px; }
+  .month span { min-width:120px; text-align:center; font-weight:600; }
+  .link { background:none; border:0; color:#cbd5e1; font-size:14px; padding:4px; }
+  main { padding:14px 14px 96px; max-width:640px; margin:0 auto; }
+  .card { background:var(--card); border-radius:16px; padding:14px; margin-bottom:12px; box-shadow:0 1px 2px rgba(0,0,0,.05); }
+  .card h2 { font-size:16px; margin:0 0 10px; display:flex; justify-content:space-between; align-items:center; }
+  .muted { color:var(--muted); font-size:14px; }
+  .row { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 0; border-top:1px solid var(--line); }
+  .row:first-of-type { border-top:0; }
+  .name { font-weight:600; }
+  .pill { display:inline-block; padding:2px 9px; border-radius:999px; font-size:12px; font-weight:600; background:#e2e8f0; color:#334155; white-space:nowrap; }
+  .pill.green { background:#dcfce7; color:#166534; } .pill.amber { background:#fef3c7; color:#92400e; } .pill.red { background:#fee2e2; color:#991b1b; }
+  .big { font-size:28px; font-weight:800; font-variant-numeric:tabular-nums; }
+  .stats { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .stat { background:var(--card); border-radius:14px; padding:12px; text-align:center; }
+  .stat .big { font-size:22px; }
+  .chips { display:flex; gap:6px; overflow-x:auto; padding-bottom:4px; margin-bottom:10px; }
+  .chip { border:1px solid var(--line); background:#fff; border-radius:999px; padding:6px 12px; white-space:nowrap; font-size:14px; }
+  .chip.on { background:var(--brand); color:#fff; border-color:var(--brand); }
+  .btn { border:0; border-radius:12px; padding:10px 14px; background:var(--brand); color:#fff; font-weight:600; }
+  .btn.small { padding:6px 10px; font-size:13px; border-radius:10px; }
+  .btn.ghost { background:#f1f5f9; color:var(--text); }
+  .btn.green { background:#16a34a; } .btn.red { background:var(--err); }
+  .btn.full { width:100%; padding:13px; }
+  .acts { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+  .detail { background:#f8fafc; border-radius:12px; padding:4px 10px; margin-top:8px; }
+  .detail .row { font-size:14px; padding:8px 0; }
+  nav { position:fixed; bottom:0; left:0; right:0; background:#fff; border-top:1px solid var(--line); display:flex; padding:6px 6px calc(6px + env(safe-area-inset-bottom)); z-index:5; }
+  nav button { flex:1; border:0; background:none; padding:8px 4px; border-radius:12px; color:var(--muted); font-size:13px; font-weight:600; }
+  nav button.on { background:#eef2ff; color:var(--brand); }
+  nav b { display:block; font-size:20px; line-height:1.1; }
+  #login { min-height:100vh; display:flex; align-items:center; justify-content:center; background:var(--brand); padding:20px; }
+  #login .card { width:100%; max-width:360px; text-align:center; padding:28px 22px; }
+  #login input { width:100%; font-size:28px; letter-spacing:8px; text-align:center; padding:12px; border:1px solid var(--line); border-radius:12px; margin:14px 0; direction:ltr; }
+  .err { color:var(--err); font-size:14px; min-height:20px; }
+  dialog { border:0; border-radius:18px; padding:20px; width:min(92vw,420px); }
+  dialog::backdrop { background:rgba(15,23,42,.5); }
+  dialog h3 { margin:0 0 12px; }
+  label { display:block; font-size:14px; color:var(--muted); margin:10px 0 4px; }
+  dialog input, dialog select, dialog textarea { width:100%; padding:10px; border:1px solid var(--line); border-radius:10px; background:#fff; font:inherit; }
+  dialog textarea { height:110px; font-size:14px; }
+  .drow { display:flex; gap:8px; } .drow > * { flex:1; }
+  .dacts { display:flex; gap:8px; margin-top:16px; } .dacts .btn { flex:1; }
+  #toast { position:fixed; bottom:84px; left:50%; transform:translateX(-50%); background:#0f172a; color:#fff; padding:10px 16px; border-radius:12px; font-size:14px; z-index:20; opacity:0; transition:opacity .2s; pointer-events:none; }
+  #toast.show { opacity:1; }
+  .empty { text-align:center; color:var(--muted); padding:16px 0; font-size:14px; }
+  .loading { text-align:center; padding:40px; color:var(--muted); }
+</style>
+</head>
+<body>
+
+<section id="login" class="hidden">
+  <div class="card">
+    <h2 style="justify-content:center">ניהול שעון נוכחות</h2>
+    <div class="muted">הכנס את קוד המנהל</div>
+    <input id="pin" type="password" inputmode="numeric" autocomplete="current-password" maxlength="12">
+    <div id="loginErr" class="err"></div>
+    <button id="loginBtn" class="btn full">כניסה</button>
+  </div>
+</section>
+
+<section id="app" class="hidden">
+  <header>
+    <div class="hrow">
+      <h1>שעון נוכחות</h1>
+      <div><button class="link" id="refreshBtn">רענון</button><button class="link" id="logoutBtn">יציאה</button></div>
+    </div>
+    <div class="month" id="monthBar">
+      <button id="prevM" aria-label="חודש קודם">›</button>
+      <span id="monthLabel"></span>
+      <button id="nextM" aria-label="חודש הבא">‹</button>
+    </div>
+  </header>
+  <main id="view"><div class="loading">טוען...</div></main>
+  <nav>
+    <button data-tab="now" class="on"><b>●</b>עכשיו</button>
+    <button data-tab="hours"><b>◷</b>שעות</button>
+    <button data-tab="emps"><b>☺</b>עובדים</button>
+  </nav>
+</section>
+
+<dialog id="dlg"><div id="dlgBody"></div></dialog>
+<div id="toast"></div>
+
+<script>
+var SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw4HP1zP6L62dexco0KL7u4GDCNsRz7O9Vz1DnBKI61FHbKCTr5XJX3B80sx_GrOPTb/exec';
+var TOKEN_KEY = 'nfc_admin_token';
+var MONTHS = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+
+var state = { tab: 'now', data: null, month: 0, year: 0, store: '', open: {} };
+
+function $(id) { return document.getElementById(id); }
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function getTok() { try { return localStorage.getItem(TOKEN_KEY); } catch (e) { return null; } }
+function setTok(t) { try { t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY); } catch (e) {} }
+function hm(h) { if (typeof h !== 'number') return ''; var m = Math.round(h * 60); return Math.floor(m / 60) + ':' + ('0' + (m % 60)).slice(-2); }
+function dmy(iso) { var p = iso.split('-'); return p[2] + '/' + p[1]; }
+function dayName(iso) { var d = new Date(iso + 'T12:00:00'); return ['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'][d.getDay()]; }
+function todayIso() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+function toast(msg) { var t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(function () { t.classList.remove('show'); }, 2600); }
+
+function api(payload) {
+  payload.token = getTok();
+  payload.device = navigator.userAgent;
+  return fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(payload) })
+    .then(function (r) { return r.json(); })
+    .then(function (res) {
+      if (!res.ok && res.code === 'auth') { setTok(null); showLogin(); throw new Error('auth'); }
+      return res;
+    });
+}
+
+/* ---------- login ---------- */
+function showLogin() { $('app').classList.add('hidden'); $('login').classList.remove('hidden'); $('pin').value = ''; setTimeout(function () { $('pin').focus(); }, 50); }
+function doLogin() {
+  var pin = $('pin').value.trim();
+  if (!pin) return;
+  $('loginBtn').disabled = true; $('loginErr').textContent = '';
+  fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify({ action: 'admin_login', pin: pin, device: navigator.userAgent }) })
+    .then(function (r) { return r.json(); })
+    .then(function (res) {
+      $('loginBtn').disabled = false;
+      if (!res.ok) { $('loginErr').textContent = res.message || 'שגיאה'; return; }
+      setTok(res.token); startApp();
+    })
+    .catch(function () { $('loginBtn').disabled = false; $('loginErr').textContent = 'אין חיבור'; });
+}
+
+/* ---------- data ---------- */
+function startApp() {
+  $('login').classList.add('hidden'); $('app').classList.remove('hidden');
+  var d = new Date(); state.month = d.getMonth() + 1; state.year = d.getFullYear();
+  load();
+}
+function load(quiet) {
+  if (!quiet) $('view').innerHTML = '<div class="loading">טוען...</div>';
+  $('monthLabel').textContent = MONTHS[state.month - 1] + ' ' + state.year;
+  return api({ action: 'admin_overview', month: state.month, year: state.year }).then(function (res) {
+    if (!res.ok) { $('view').innerHTML = '<div class="card err">' + esc(res.message) + '</div>'; return; }
+    state.data = res; render();
+  }).catch(function (e) { if (e.message !== 'auth') $('view').innerHTML = '<div class="card err">אין חיבור לשרת. נסה רענון.</div>'; });
+}
+function render() {
+  $('monthBar').classList.toggle('hidden', state.tab !== 'hours');
+  if (state.tab === 'now') renderNow();
+  else if (state.tab === 'hours') renderHours();
+  else renderEmps();
+}
+
+/* ---------- tab: now ---------- */
+function renderNow() {
+  var d = state.data, html = '';
+  var stores = d.stores.slice();
+  d.open.forEach(function (s) { if (stores.indexOf(s.store) === -1) stores.push(s.store); });
+  html += '<div class="stats" style="margin-bottom:12px">' +
+    '<div class="stat"><div class="big">' + d.open.length + '</div><div class="muted">במשמרת עכשיו</div></div>' +
+    '<div class="stat"><div class="big">' + d.employees.filter(function (e) { return e.active; }).length + '</div><div class="muted">עובדים פעילים</div></div>' +
+    '<div class="stat"><div class="big" style="color:' + (d.missing.length ? 'var(--warn)' : 'inherit') + '">' + d.missing.length + '</div><div class="muted">חסרות יציאות</div></div></div>';
+  if (d.missing.length) {
+    html += '<div class="card"><h2>משמרות בלי יציאה <span class="pill amber">לתיקון</span></h2>';
+    d.missing.forEach(function (s, i) {
+      html += '<div class="row"><div><div class="name">' + esc(s.name) + '</div><div class="muted">' + esc(s.store) + ' · ' + dayName(s.date) + ' ' + dmy(s.date) + ' נכנס ' + s.in + '</div></div>' +
+        '<button class="btn small" data-fix="m' + i + '">הזן יציאה</button></div>';
+    });
+    html += '</div>';
+  }
+  stores.forEach(function (st) {
+    var inShift = d.open.filter(function (s) { return s.store === st; });
+    html += '<div class="card"><h2>' + esc(st) + ' <span class="pill ' + (inShift.length ? 'green' : '') + '">' + inShift.length + ' במשמרת</span></h2>';
+    if (!inShift.length) html += '<div class="empty">אין אף אחד במשמרת</div>';
+    inShift.forEach(function (s, i) {
+      var mins = Math.max(0, Math.round((Date.now() - s.inMs) / 60000));
+      html += '<div class="row"><div><div class="name">' + esc(s.name) + '</div><div class="muted">מ-' + s.in + ' · ' + Math.floor(mins / 60) + ':' + ('0' + mins % 60).slice(-2) + ' שעות</div></div>' +
+        '<button class="btn small ghost" data-fix="o' + d.open.indexOf(s) + '">סגור משמרת</button></div>';
+    });
+    html += '</div>';
+  });
+  $('view').innerHTML = html;
+}
+
+/* ---------- tab: hours ---------- */
+function renderHours() {
+  var d = state.data, html = '';
+  var stores = [''].concat(d.stores);
+  html += '<div class="chips">' + stores.map(function (s) { return '<button class="chip' + (state.store === s ? ' on' : '') + '" data-store="' + esc(s) + '">' + (s ? esc(s) : 'כל החנויות') + '</button>'; }).join('') + '</div>';
+  var shifts = d.shifts.filter(function (s) { return !state.store || s.store === state.store; });
+  var by = {};
+  shifts.forEach(function (s) {
+    if (!by[s.empId]) by[s.empId] = { id: s.empId, name: s.name, hours: 0, days: {}, missing: 0, list: [] };
+    var e = by[s.empId]; e.list.push(s); e.days[s.date] = 1;
+    if (typeof s.hours === 'number') e.hours += s.hours; else e.missing++;
+  });
+  var emps = Object.keys(by).map(function (k) { return by[k]; }).sort(function (a, b) { return a.name.localeCompare(b.name, 'he'); });
+  var total = emps.reduce(function (a, e) { return a + e.hours; }, 0);
+  var days = {}; shifts.forEach(function (s) { days[s.date] = 1; });
+  html += '<div class="stats" style="margin-bottom:12px">' +
+    '<div class="stat"><div class="big">' + hm(total) + '</div><div class="muted">סה"כ שעות</div></div>' +
+    '<div class="stat"><div class="big">' + emps.length + '</div><div class="muted">עובדים</div></div>' +
+    '<div class="stat"><div class="big">' + Object.keys(days).length + '</div><div class="muted">ימי פעילות</div></div></div>';
+  html += '<div class="card"><h2>שעות לפי עובד <button class="btn small ghost" id="addShiftBtn">+ משמרת ידנית</button></h2>';
+  if (!emps.length) html += '<div class="empty">אין משמרות בחודש הזה</div>';
+  emps.forEach(function (e) {
+    var openRow = state.open[e.id];
+    html += '<div class="row" data-toggle="' + esc(e.id) + '" style="cursor:pointer"><div><div class="name">' + esc(e.name) + '</div><div class="muted">' + Object.keys(e.days).length + ' ימים' + (e.missing ? ' · <span class="pill amber">' + e.missing + ' בלי יציאה</span>' : '') + '</div></div>' +
+      '<div style="text-align:left"><div class="big" style="font-size:20px">' + hm(e.hours) + '</div><div class="muted">' + (openRow ? 'הסתר ▲' : 'פירוט ▼') + '</div></div></div>';
+    if (openRow) {
+      html += '<div class="detail">';
+      e.list.sort(function (a, b) { return a.inMs - b.inMs; }).forEach(function (s) {
+        var idx = d.shifts.indexOf(s);
+        html += '<div class="row"><div><div>' + dayName(s.date) + ' ' + dmy(s.date) + ' · ' + s.in + ' עד ' + (s.out || '<span class="pill amber">חסר</span>') + '</div>' +
+          '<div class="muted">' + esc(s.store) + (s.note ? ' · ' + esc(s.note) : '') + '</div></div>' +
+          '<div style="text-align:left"><div class="name">' + (s.hours != null ? hm(s.hours) : '') + '</div>' +
+          '<button class="link" style="color:var(--out)" data-fix="s' + idx + '">' + (s.out ? 'תקן' : 'הזן יציאה') + '</button>' +
+          '<button class="link" style="color:var(--err)" data-del="' + idx + '">מחק</button></div></div>';
+      });
+      html += '</div>';
+    }
+  });
+  html += '</div>';
+  $('view').innerHTML = html;
+}
+
+/* ---------- tab: employees ---------- */
+function renderEmps() {
+  var d = state.data, html = '<button class="btn full" id="addEmpBtn" style="margin-bottom:12px">+ עובד חדש</button>';
+  var stores = d.stores.slice();
+  d.employees.forEach(function (e) { if (stores.indexOf(e.store) === -1) stores.push(e.store); });
+  stores.forEach(function (st) {
+    var list = d.employees.filter(function (e) { return e.store === st; });
+    if (!list.length) return;
+    html += '<div class="card"><h2>' + esc(st) + ' <span class="pill">' + list.length + '</span></h2>';
+    list.forEach(function (e) {
+      var pill = !e.active ? '<span class="pill">לא פעיל</span>' : e.hasDevice ? '<span class="pill green">רשום</span>' : e.status === 'ממתין לרישום' ? '<span class="pill amber">ממתין לרישום</span>' : '<span class="pill red">לא רשום</span>';
+      html += '<div class="row" style="display:block"><div class="hrow"><div><span class="name">' + esc(e.name) + '</span> ' + pill + '</div><button class="link" style="color:var(--out)" data-edit="' + esc(e.id) + '">עריכה</button></div>' +
+        (e.device ? '<div class="muted">' + esc(e.device) + (e.enrolled ? ' · נרשם ' + e.enrolled : '') + '</div>' : '') +
+        '<div class="acts"><button class="btn small green" data-link="' + esc(e.id) + '">' + (e.hasDevice ? 'קישור רישום חדש' : 'שלח קישור רישום') + '</button>' +
+        (e.hasDevice ? '<button class="btn small ghost" data-reset="' + esc(e.id) + '">ניתוק טלפון</button>' : '') + '</div></div>';
+    });
+    html += '</div>';
+  });
+  if (!d.employees.length) html += '<div class="card empty">עוד אין עובדים. הוסף את הראשון.</div>';
+  $('view').innerHTML = html;
+}
+
+/* ---------- dialogs ---------- */
+function openDlg(html) { $('dlgBody').innerHTML = html; var dl = $('dlg'); if (dl.showModal) dl.showModal(); else dl.setAttribute('open', ''); }
+function closeDlg() { var dl = $('dlg'); if (dl.close) dl.close(); else dl.removeAttribute('open'); }
+function storeOptions(sel) { return state.data.stores.map(function (s) { return '<option' + (s === sel ? ' selected' : '') + '>' + esc(s) + '</option>'; }).join(''); }
+function busy(btn, on) { if (btn) { btn.disabled = on; btn.style.opacity = on ? .6 : 1; } }
+
+function dlgAddEmp() {
+  openDlg('<h3>עובד חדש</h3><label>שם</label><input id="fName" maxlength="40"><label>חנות</label><select id="fStore">' + storeOptions() + '</select>' +
+    '<div class="dacts"><button class="btn ghost" data-close>ביטול</button><button class="btn" id="fSave">הוספה ושליחת קישור</button></div>');
+  $('fSave').onclick = function () {
+    var name = $('fName').value.trim(); if (!name) { $('fName').focus(); return; }
+    busy(this, true);
+    api({ action: 'admin_add_employee', name: name, store: $('fStore').value }).then(function (res) {
+      if (!res.ok) { toast(res.message); busy($('fSave'), false); return; }
+      closeDlg(); load(true).then(function () { dlgLink(res.id); });
+    });
+  };
+  setTimeout(function () { $('fName').focus(); }, 50);
+}
+
+function dlgEdit(id) {
+  var e = state.data.employees.filter(function (x) { return x.id === id; })[0];
+  openDlg('<h3>עריכת עובד</h3><label>שם</label><input id="fName" maxlength="40" value="' + esc(e.name) + '"><label>חנות</label><select id="fStore">' + storeOptions(e.store) + '</select>' +
+    '<label>סטטוס</label><select id="fActive"><option value="1"' + (e.active ? ' selected' : '') + '>פעיל</option><option value="0"' + (!e.active ? ' selected' : '') + '>לא פעיל (עזב)</option></select>' +
+    '<div class="dacts"><button class="btn ghost" data-close>ביטול</button><button class="btn" id="fSave">שמירה</button></div>');
+  $('fSave').onclick = function () {
+    busy(this, true);
+    api({ action: 'admin_update_employee', id: id, name: $('fName').value, store: $('fStore').value, active: $('fActive').value === '1' }).then(function (res) {
+      if (!res.ok) { toast(res.message); busy($('fSave'), false); return; }
+      closeDlg(); toast('נשמר'); load(true);
+    });
+  };
+}
+
+function dlgLink(id) {
+  var e = state.data.employees.filter(function (x) { return x.id === id; })[0];
+  openDlg('<h3>קישור רישום</h3><div class="muted">יוצר קישור עבור ' + esc(e ? e.name : '') + '...</div>');
+  api({ action: 'admin_enroll_link', id: id }).then(function (res) {
+    if (!res.ok) { $('dlgBody').innerHTML = '<h3>שגיאה</h3><div class="err">' + esc(res.message) + '</div><div class="dacts"><button class="btn ghost" data-close>סגירה</button></div>'; return; }
+    $('dlgBody').innerHTML = '<h3>קישור רישום ל' + esc(e ? e.name : '') + '</h3><div class="muted">עובד פעם אחת, תקף ל-24 שעות. הכי בטוח לרשום כשהעובד לידך.</div>' +
+      '<label>ההודעה</label><textarea id="fMsg" readonly>' + esc(res.message) + '</textarea>' +
+      '<div class="dacts"><button class="btn ghost" id="fCopy">העתקה</button><a class="btn green" style="text-align:center;text-decoration:none" target="_blank" rel="noopener" href="https://wa.me/?text=' + encodeURIComponent(res.message) + '">וואטסאפ</a></div>' +
+      '<div class="dacts"><button class="btn ghost" data-close>סגירה</button></div>';
+    $('fCopy').onclick = function () {
+      var t = $('fMsg'); t.select();
+      (navigator.clipboard ? navigator.clipboard.writeText(t.value) : Promise.reject()).then(function () { toast('הועתק'); }, function () { document.execCommand('copy'); toast('הועתק'); });
+    };
+    load(true);
+  });
+}
+
+function dlgReset(id) {
+  var e = state.data.employees.filter(function (x) { return x.id === id; })[0];
+  openDlg('<h3>ניתוק טלפון</h3><div>לנתק את הטלפון של <b>' + esc(e.name) + '</b>? הוא לא יוכל להחתים עד שיירשם מחדש.</div>' +
+    '<div class="dacts"><button class="btn ghost" data-close>ביטול</button><button class="btn red" id="fOk">ניתוק</button></div>');
+  $('fOk').onclick = function () {
+    busy(this, true);
+    api({ action: 'admin_reset_device', id: id }).then(function (res) { closeDlg(); toast(res.ok ? 'הטלפון נותק' : res.message); load(true); });
+  };
+}
+
+function dlgFix(s) {
+  var outDate = s.outDate || s.date;
+  openDlg('<h3>' + (s.out ? 'תיקון שעת יציאה' : 'הזנת שעת יציאה') + '</h3><div class="muted">' + esc(s.name) + ' · ' + esc(s.store) + ' · נכנס ' + dayName(s.date) + ' ' + dmy(s.date) + ' ב-' + s.in + '</div>' +
+    '<div class="drow"><div><label>תאריך יציאה</label><input type="date" id="fDate" value="' + outDate + '"></div><div><label>שעת יציאה</label><input type="time" id="fTime" value="' + (s.out || '') + '"></div></div>' +
+    '<div class="dacts"><button class="btn ghost" data-close>ביטול</button><button class="btn" id="fSave">שמירה</button></div>');
+  $('fSave').onclick = function () {
+    if (!$('fTime').value) { $('fTime').focus(); return; }
+    busy(this, true);
+    api({ action: 'admin_set_out', row: s.row, empId: s.empId, inMs: s.inMs, date: $('fDate').value, time: $('fTime').value }).then(function (res) {
+      if (!res.ok) { toast(res.message); busy($('fSave'), false); return; }
+      closeDlg(); toast('נשמר: ' + hm(res.hours) + ' שעות'); load(true);
+    });
+  };
+}
+
+function dlgDel(s) {
+  openDlg('<h3>מחיקת משמרת</h3><div>למחוק את המשמרת של <b>' + esc(s.name) + '</b> ב-' + dmy(s.date) + ' (' + s.in + ' עד ' + (s.out || '?') + ')? אי אפשר לבטל.</div>' +
+    '<div class="dacts"><button class="btn ghost" data-close>ביטול</button><button class="btn red" id="fOk">מחיקה</button></div>');
+  $('fOk').onclick = function () {
+    busy(this, true);
+    api({ action: 'admin_delete_shift', row: s.row, empId: s.empId, inMs: s.inMs }).then(function (res) { closeDlg(); toast(res.ok ? 'נמחק' : res.message); load(true); });
+  };
+}
+
+function dlgAddShift() {
+  var emps = state.data.employees.filter(function (e) { return e.active; });
+  if (!emps.length) { toast('אין עובדים פעילים'); return; }
+  openDlg('<h3>משמרת ידנית</h3><div class="muted">למשל כשעובד שכח טלפון. המשמרת תסומן כהוזנה ידנית.</div>' +
+    '<label>עובד</label><select id="fEmp">' + emps.map(function (e) { return '<option value="' + esc(e.id) + '">' + esc(e.name) + ' (' + esc(e.store) + ')</option>'; }).join('') + '</select>' +
+    '<label>חנות</label><select id="fStore">' + storeOptions(emps[0].store) + '</select>' +
+    '<label>תאריך</label><input type="date" id="fDate" value="' + todayIso() + '">' +
+    '<div class="drow"><div><label>כניסה</label><input type="time" id="fIn"></div><div><label>יציאה</label><input type="time" id="fOut"></div></div>' +
+    '<div class="dacts"><button class="btn ghost" data-close>ביטול</button><button class="btn" id="fSave">הוספה</button></div>');
+  $('fEmp').onchange = function () { var e = emps.filter(function (x) { return x.id === $('fEmp').value; })[0]; $('fStore').value = e.store; };
+  $('fSave').onclick = function () {
+    if (!$('fIn').value || !$('fOut').value) { toast('חסרה שעה'); return; }
+    busy(this, true);
+    api({ action: 'admin_add_shift', id: $('fEmp').value, store: $('fStore').value, date: $('fDate').value, in: $('fIn').value, out: $('fOut').value }).then(function (res) {
+      if (!res.ok) { toast(res.message); busy($('fSave'), false); return; }
+      closeDlg(); toast('נוספה משמרת: ' + hm(res.hours) + ' שעות'); load(true);
+    });
+  };
+}
+
+/* ---------- events ---------- */
+document.addEventListener('click', function (ev) {
+  var t = ev.target.closest('button, [data-toggle]');
+  if (!t) return;
+  var d = state.data;
+  if (t.hasAttribute('data-close')) return closeDlg();
+  if (t.dataset.tab) {
+    state.tab = t.dataset.tab;
+    document.querySelectorAll('nav button').forEach(function (b) { b.classList.toggle('on', b === t); });
+    var cur = new Date();
+    if (state.tab !== 'hours' && (state.month !== cur.getMonth() + 1 || state.year !== cur.getFullYear())) { state.month = cur.getMonth() + 1; state.year = cur.getFullYear(); return load(); }
+    return render();
+  }
+  if (t.dataset.store !== undefined) { state.store = t.dataset.store; return renderHours(); }
+  if (t.dataset.toggle) { state.open[t.dataset.toggle] = !state.open[t.dataset.toggle]; return renderHours(); }
+  if (t.dataset.fix) {
+    var k = t.dataset.fix, list = k[0] === 'm' ? d.missing : k[0] === 'o' ? d.open : d.shifts;
+    return dlgFix(list[Number(k.slice(1))]);
+  }
+  if (t.dataset.del) return dlgDel(d.shifts[Number(t.dataset.del)]);
+  if (t.dataset.edit) return dlgEdit(t.dataset.edit);
+  if (t.dataset.link) return dlgLink(t.dataset.link);
+  if (t.dataset.reset) return dlgReset(t.dataset.reset);
+  if (t.id === 'addEmpBtn') return dlgAddEmp();
+  if (t.id === 'addShiftBtn') return dlgAddShift();
+});
+$('loginBtn').onclick = doLogin;
+$('pin').onkeydown = function (e) { if (e.key === 'Enter') doLogin(); };
+$('refreshBtn').onclick = function () { load(); };
+$('logoutBtn').onclick = function () { api({ action: 'admin_logout' }).catch(function () {}); setTok(null); showLogin(); };
+$('prevM').onclick = function () { state.month--; if (state.month < 1) { state.month = 12; state.year--; } load(); };
+$('nextM').onclick = function () { state.month++; if (state.month > 12) { state.month = 1; state.year++; } load(); };
+
+if (getTok()) startApp(); else showLogin();
+</script>
+</body>
+</html>
